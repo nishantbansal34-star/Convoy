@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#16191c">
+<title>Convoy – keep everyone close</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+/* VOICE practical, calm, road-trip  IDEA highway sign + asphalt  PICTURE live map  COLOUR asphalt, sign yellow, signal red  TYPE Barlow */
+:root{--bg:#16191c;--panel:#20252a;--line:#2f363d;--ink:#f2f2ee;--mute:#9aa3ab;--y:#ffc629;--red:#ff4d4d;--grn:#3ddc84}
+*{box-sizing:border-box;min-width:0;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:16px/1.45 Barlow,system-ui,sans-serif;overflow:hidden}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer;border:0;border-radius:12px;min-height:44px;padding:0 16px;background:var(--line);font-weight:600}
+button:focus-visible,input:focus-visible{outline:3px solid var(--y);outline-offset:2px}
+.pri{background:var(--y);color:#16191c}
+input{width:100%;min-height:48px;padding:0 14px;border-radius:12px;border:1px solid var(--line);background:#121518;font-size:17px}
+label{display:block;font-size:14px;color:var(--mute);margin:14px 0 6px}
+/* join */
+#join{position:fixed;inset:0;overflow:auto;padding:max(24px,env(safe-area-inset-top)) 20px 32px;background:radial-gradient(120% 60% at 50% 0%,#2a3036,var(--bg))}
+.wrap{max-width:440px;margin:0 auto}
+.sign{background:var(--y);color:#16191c;border-radius:14px;padding:18px 20px;border:4px solid #16191c;box-shadow:0 0 0 3px var(--y);margin:10px 0 22px}
+.sign h1{font:700 44px/1 "Barlow Condensed",sans-serif;margin:0}
+.sign p{margin:6px 0 0;font-weight:600}
+.road{height:70px;margin:0 0 8px;position:relative;border-radius:12px;background:#2a2f34;overflow:hidden}
+.road:before{content:"";position:absolute;left:0;right:0;top:33px;height:4px;background:repeating-linear-gradient(90deg,var(--y) 0 26px,transparent 26px 50px);animation:dash 1.2s linear infinite}
+.road svg{position:absolute;top:14px}
+@keyframes dash{to{background-position:-50px 0}}
+@media(prefers-reduced-motion:reduce){.road:before{animation:none}}
+.row{display:flex;gap:10px}.row>*{flex:1}
+.swatches{display:flex;gap:10px;flex-wrap:wrap}
+.sw{width:44px;height:44px;border-radius:50%;padding:0;border:3px solid transparent}
+.sw[aria-pressed=true]{border-color:var(--ink)}
+.chk{display:flex;align-items:center;gap:12px;margin-top:16px;font-weight:600}
+.chk input{width:24px;min-height:24px;accent-color:var(--y)}
+.note{font-size:14px;color:var(--mute);margin-top:18px}
+/* app */
+#app{position:fixed;inset:0;display:none}
+#map{position:absolute;inset:0;background:#0f1214}
+.top{position:absolute;z-index:500;left:0;right:0;top:0;padding:max(10px,env(safe-area-inset-top)) 10px 0;display:flex;gap:8px;align-items:flex-start;pointer-events:none}
+.top>*{pointer-events:auto}
+.chip{background:rgba(22,25,28,.92);border:1px solid var(--line);border-radius:12px;padding:8px 12px;font-weight:600;backdrop-filter:blur(6px)}
+.code{font:700 22px/1 "Barlow Condensed";letter-spacing:.06em;color:var(--y)}
+#status{flex:1;display:flex;align-items:center;gap:8px;min-height:44px}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--mute);flex:none}
+.dot.ok{background:var(--grn)}.dot.bad{background:var(--red)}
+#alert{position:absolute;z-index:600;left:10px;right:10px;top:calc(max(10px,env(safe-area-inset-top)) + 56px);background:var(--red);color:#fff;border-radius:14px;padding:12px 14px;font-weight:700;display:none;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+#alert.show{display:block}
+#alert small{display:block;font-weight:500;opacity:.9}
+#toast{position:absolute;z-index:700;left:50%;top:40%;transform:translate(-50%,-50%);background:var(--y);color:#16191c;font:700 26px/1.1 "Barlow Condensed";padding:18px 22px;border-radius:16px;text-align:center;display:none;max-width:86vw}
+#toast small{display:block;font:600 15px Barlow}
+.fab{position:absolute;z-index:500;right:10px;display:flex;flex-direction:column;gap:8px;bottom:calc(var(--sheet,230px) + 12px)}
+.fab button{width:48px;height:48px;padding:0;background:rgba(22,25,28,.92);border:1px solid var(--line);font-size:20px}
+.fab button[aria-pressed=true]{background:var(--y);color:#16191c}
+#sheet{position:absolute;z-index:550;left:0;right:0;bottom:0;background:var(--panel);border-radius:18px 18px 0 0;padding:8px 14px max(14px,env(safe-area-inset-bottom));max-height:58vh;display:flex;flex-direction:column;box-shadow:0 -8px 30px rgba(0,0,0,.45)}
+.grab{width:42px;height:5px;border-radius:3px;background:var(--line);margin:2px auto 8px;flex:none}
+.sumrow{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex:none}
+.big{font:700 30px/1 "Barlow Condensed"}
+.big.bad{color:var(--red)}
+.lab{font-size:13px;color:var(--mute)}
+#cars{list-style:none;margin:10px 0 0;padding:0;overflow:auto;flex:1}
+#cars li{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--line)}
+.av{width:36px;height:36px;border-radius:50%;flex:none;display:grid;place-items:center;font-weight:700;color:#16191c}
+.who{flex:1}.who b{display:block}.who span{font-size:13px;color:var(--mute)}
+.gap{text-align:right;white-space:nowrap;font-weight:700}
+.gap.far{color:var(--red)}.gap span{display:block;font-size:12px;color:var(--mute);font-weight:500}
+.quick{display:flex;gap:8px;overflow-x:auto;padding:10px 0 2px;flex:none;scrollbar-width:none}
+.quick button{flex:none;min-height:40px;font-size:15px}
+.ctl{display:flex;align-items:center;gap:10px;padding-top:10px;flex:none;font-size:14px;color:var(--mute)}
+.ctl input[type=range]{flex:1;min-height:30px;padding:0;accent-color:var(--y);border:0;background:none}
+.ctl b{color:var(--ink);white-space:nowrap}
+dialog{border:0;border-radius:18px;background:var(--panel);color:var(--ink);padding:20px;max-width:380px;width:calc(100% - 32px)}
+dialog::backdrop{background:rgba(0,0,0,.6)}
+.link{word-break:break-all;background:#121518;border-radius:10px;padding:10px;font-size:14px;margin:10px 0}
+.car-ic{width:34px;height:34px}
+.car-tag{position:absolute;left:50%;top:36px;transform:translateX(-50%);background:rgba(22,25,28,.9);color:#fff;font:600 12px Barlow;padding:1px 7px;border-radius:8px;white-space:nowrap}
+.leaflet-container{font-family:Barlow}
+.leaflet-control-attribution{font-size:10px}
+</style>
+</head>
+<body>
+
+<section id="join">
+ <div class="wrap">
+  <div class="sign"><h1>CONVOY</h1><p>Live map of every car in your group. Get warned when someone falls behind.</p></div>
+  <div class="road" aria-hidden="true">
+   <svg style="left:18%" width="64" height="40" viewBox="0 0 64 40"><rect x="4" y="8" width="54" height="24" rx="8" fill="#ffc629"/><rect x="38" y="12" width="12" height="16" rx="3" fill="#16191c" opacity=".55"/></svg>
+   <svg style="left:48%" width="64" height="40" viewBox="0 0 64 40"><rect x="4" y="8" width="54" height="24" rx="8" fill="#3ddc84"/><rect x="38" y="12" width="12" height="16" rx="3" fill="#16191c" opacity=".55"/></svg>
+   <svg style="left:76%" width="64" height="40" viewBox="0 0 64 40"><rect x="4" y="8" width="54" height="24" rx="8" fill="#5aa9ff"/><rect x="38" y="12" width="12" height="16" rx="3" fill="#16191c" opacity=".55"/></svg>
+  </div>
+  <form id="jf">
+   <label for="name">Your name or car</label>
+   <input id="name" maxlength="18" placeholder="e.g. Nishant – Creta" required autocomplete="nickname">
+   <label for="trip">Trip code</label>
+   <div class="row"><input id="trip" maxlength="8" placeholder="Code from your group" style="text-transform:uppercase" required autocapitalize="characters"><button type="button" id="newTrip" style="flex:0 0 auto">New trip</button></div>
+   <label>Car colour</label>
+   <div class="swatches" id="sws"></div>
+   <label class="chk"><input type="checkbox" id="lead"> I'm the lead car</label>
+   <button class="pri" style="width:100%;margin-top:22px;min-height:54px;font-size:18px">Start sharing my location</button>
+  </form>
+  <p class="note">Everyone opens this same page and enters the same trip code. Your location is only shared with people in your trip while this page is open, and is never stored. Keep the phone on charge for long drives.</p>
+ </div>
+</section>
+
+<section id="app">
+ <div id="map"></div>
+ <div class="top">
+  <button class="chip" id="shareBtn" aria-label="Invite cars"><span class="lab" style="display:block;font-size:11px">TRIP</span><span class="code" id="codeLbl"></span></button>
+  <div class="chip" id="status"><span class="dot" id="dot"></span><span id="statusTxt">Connecting…</span></div>
+ </div>
+ <div id="alert" role="alert"></div>
+ <div id="toast" role="status"></div>
+ <div class="fab">
+  <button id="fitBtn" aria-label="Show all cars" title="Show all cars">⤢</button>
+  <button id="followBtn" aria-label="Follow my car" aria-pressed="false" title="Follow me">◎</button>
+ </div>
+ <div id="sheet">
+  <div class="grab"></div>
+  <div class="sumrow">
+   <div><div class="lab">Convoy spread</div><div class="big" id="spread">–</div></div>
+   <div style="text-align:center"><div class="lab">Cars</div><div class="big" id="count">1</div></div>
+   <div style="text-align:right"><div class="lab">My speed</div><div class="big" id="mySpeed">–</div></div>
+  </div>
+  <div class="quick" id="quick"></div>
+  <ul id="cars"></ul>
+  <div class="ctl"><span>Warn if a car is more than</span><input type="range" id="limit" min="0.3" max="10" step="0.1" value="1.5" aria-label="Warning distance"><b id="limitLbl">1.5 km</b></div>
+  <div class="ctl"><button id="leaveBtn" style="flex:1;min-height:40px">Leave trip</button></div>
+ </div>
+</section>
+
+<dialog id="dlg">
+ <h3 style="margin:0 0 6px">Invite cars to <span class="code" id="dlgCode"></span></h3>
+ <p class="lab" style="margin:0">Send this link on WhatsApp. They open it, type their name and tap start.</p>
+ <div class="link" id="dlgLink"></div>
+ <div class="row"><button class="pri" id="copyBtn">Copy link</button><a id="waBtn" target="_blank" rel="noopener" style="flex:1"><button style="width:100%;background:#25d366;color:#08240f">WhatsApp</button></a></div>
+ <button style="width:100%;margin-top:10px" id="dlgClose">Close</button>
+</dialog>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script>
+{
+const SB_URL='https://nbsrlpubmukksdpusxpx.supabase.co';
+const SB_KEY='sb_publishable_-b7urbpGemxGRtC-__5cyw_LB1j3lRR';
+const COLORS=['#ffc629','#3ddc84','#5aa9ff','#ff7ab6','#ff8a3d','#b48cff','#ffffff','#ff4d4d'];
+const QUICK=[['🛑','Stop ahead'],['☕','Tea / food break'],['⛽','Fuel stop'],['🐢','Slow down, wait'],['✋','Wait for me'],['🚻','Washroom break'],['👍','All good']];
+const STALE=60e3;
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+
+let me={id:store.get('cv_id')||Math.random().toString(36).slice(2,10),name:'',color:COLORS[0],lead:false,lat:null,lng:null,spd:null,hdg:null,acc:null,ts:0};
+store.set('cv_id',me.id);
+let trip='',sb=null,ch=null,map=null,watchId=null,wake=null,follow=false,fitted=false,lastSent=0,alerted={};
+const cars={};            // id -> data (incl. me)
+const markers={};
+let limitKm=parseFloat(store.get('cv_limit')||'1.5');
+
+/* ---------- join screen ---------- */
+const code=()=>Array.from({length:5},()=>'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random()*32)]).join('');
+$('sws').innerHTML=COLORS.map((c,i)=>`<button type="button" class="sw" style="background:${c}" data-c="${c}" aria-label="Colour ${i+1}" aria-pressed="false"></button>`).join('');
+function pickColor(c){me.color=c;document.querySelectorAll('.sw').forEach(b=>b.setAttribute('aria-pressed',b.dataset.c===c))}
+$('sws').addEventListener('click',e=>{const b=e.target.closest('.sw');if(b)pickColor(b.dataset.c)});
+const qs=new URLSearchParams(location.search);
+$('trip').value=(qs.get('trip')||store.get('cv_trip')||'').toUpperCase();
+$('name').value=store.get('cv_name')||'';
+pickColor(store.get('cv_color')||COLORS[Math.floor(Math.random()*COLORS.length)]);
+$('newTrip').onclick=()=>{$('trip').value=code();$('lead').checked=true};
+$('jf').addEventListener('submit',e=>{
+ e.preventDefault();
+ me.name=$('name').value.trim().slice(0,18);trip=$('trip').value.trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
+ if(!me.name||trip.length<3){$('trip').focus();return}
+ me.lead=$('lead').checked;
+ store.set('cv_name',me.name);store.set('cv_trip',trip);store.set('cv_color',me.color);
+ start();
+});
+
+/* ---------- geo helpers ---------- */
+function km(a,b){const R=6371,r=Math.PI/180,dl=(b.lat-a.lat)*r,dn=(b.lng-a.lng)*r,x=Math.sin(dl/2)**2+Math.cos(a.lat*r)*Math.cos(b.lat*r)*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(x))}
+const fmtKm=d=>d==null?'–':d<1?Math.round(d*1000)+' m':d.toFixed(d<10?1:0)+' km';
+function ago(ts){const s=Math.round((Date.now()-ts)/1000);return s<10?'just now':s<60?s+'s ago':Math.round(s/60)+' min ago'}
+
+/* ---------- start ---------- */
+function start(){
+ $('join').style.display='none';$('app').style.display='block';
+ $('codeLbl').textContent=trip;$('dlgCode').textContent=trip;
+ history.replaceState(null,'','?trip='+trip);
+ map=L.map('map',{zoomControl:false,attributionControl:true}).setView([27.88,78.08],12);
+ L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19,attribution:'© OpenStreetMap © CARTO'}).addTo(map);
+ map.on('dragstart',()=>setFollow(false));
+ $('limit').value=limitKm;$('limitLbl').textContent=fmtKm(limitKm);
+ $('quick').innerHTML=QUICK.map(([i,t],n)=>`<button data-q="${n}">${i} ${esc(t)}</button>`).join('');
+ cars[me.id]=me;
+ startGeo();connect();keepAwake();
+ setInterval(render,5000);
+ document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){keepAwake();send(true)}});
+ sizeSheet();
+}
+function sizeSheet(){const h=$('sheet').getBoundingClientRect().height;document.documentElement.style.setProperty('--sheet',h+'px')}
+addEventListener('resize',()=>{if(map)sizeSheet()});
+
+function startGeo(){
+ if(!navigator.geolocation){status('bad','This phone can’t share location');return}
+ watchId=navigator.geolocation.watchPosition(p=>{
+  const c=p.coords;
+  me.lat=c.latitude;me.lng=c.longitude;me.acc=c.accuracy;
+  me.spd=c.speed!=null&&c.speed>=0?c.speed*3.6:me.spd;
+  if(c.heading!=null&&!isNaN(c.heading))me.hdg=c.heading;
+  me.ts=Date.now();
+  send();render();
+  if(follow)map.panTo([me.lat,me.lng]);
+  if(!fitted){fitted=true;map.setView([me.lat,me.lng],14)}
+ },err=>{
+  status('bad',err.code===1?'Location blocked – allow it in browser settings':'Waiting for GPS…');
+ },{enableHighAccuracy:true,maximumAge:3000,timeout:20000});
+}
+async function keepAwake(){try{if('wakeLock' in navigator&&!wake){wake=await navigator.wakeLock.request('screen');wake.addEventListener('release',()=>wake=null)}}catch(e){}}
+
+/* ---------- realtime ---------- */
+let online=false;
+function status(k,t){$('dot').className='dot '+(k||'');$('statusTxt').textContent=t}
+function connect(){
+ sb=supabase.createClient(SB_URL,SB_KEY,{realtime:{params:{eventsPerSecond:5}}});
+ ch=sb.channel('convoy-'+trip,{config:{presence:{key:me.id},broadcast:{self:false}}});
+ ch.on('presence',{event:'sync'},()=>{
+  const st=ch.presenceState(),live=new Set();
+  for(const k in st){const m=st[k][st[k].length-1];if(!m||k===me.id)continue;live.add(k);cars[k]=Object.assign(cars[k]||{},m,{online:true})}
+  for(const k in cars)if(k!==me.id&&!live.has(k))cars[k].online=false;
+  render();
+ });
+ ch.on('broadcast',{event:'loc'},({payload:p})=>{if(p&&p.id&&p.id!==me.id){cars[p.id]=Object.assign(cars[p.id]||{},p,{online:true});render()}});
+ ch.on('broadcast',{event:'msg'},({payload:p})=>{if(p)toast(p.text,p.name)});
+ ch.subscribe(async s=>{
+  if(s==='SUBSCRIBED'){online=true;status('ok','Live');await ch.track(pub());}
+  else if(s==='CHANNEL_ERROR'||s==='TIMED_OUT'||s==='CLOSED'){online=false;status('bad','Reconnecting…')}
+ });
+ addEventListener('online',()=>status('','Reconnecting…'));
+ addEventListener('offline',()=>{online=false;status('bad','No internet – reconnecting')});
+}
+const pub=()=>({id:me.id,name:me.name,color:me.color,lead:me.lead,lat:me.lat,lng:me.lng,spd:me.spd,hdg:me.hdg,ts:me.ts||Date.now()});
+function send(force){
+ if(!online||!ch)return;const now=Date.now();
+ if(!force&&now-lastSent<3000)return;lastSent=now;
+ ch.send({type:'broadcast',event:'loc',payload:pub()});
+ if(force||now-(send.t||0)>20000){send.t=now;ch.track(pub())}
+}
+setInterval(()=>send(true),15000);
+
+/* ---------- messages ---------- */
+$('quick').addEventListener('click',e=>{
+ const b=e.target.closest('button');if(!b||!ch)return;
+ const [i,t]=QUICK[+b.dataset.q],text=i+' '+t;
+ ch.send({type:'broadcast',event:'msg',payload:{text,name:me.name}});
+ toast(text,'Sent to everyone');
+});
+let tT;
+function toast(text,from){
+ const el=$('toast');el.innerHTML=esc(text)+'<small>'+esc(from)+'</small>';el.style.display='block';
+ try{navigator.vibrate&&navigator.vibrate([200,100,200])}catch(e){}
+ clearTimeout(tT);tT=setTimeout(()=>el.style.display='none',4500);
+}
+
+/* ---------- render ---------- */
+function carIcon(c,isMe){
+ const stale=!c.online&&!isMe||Date.now()-(c.ts||0)>STALE;
+ const rot=c.hdg!=null?c.hdg:0,arrow=c.hdg!=null&&(c.spd||0)>3;
+ const body=arrow
+  ?`<path d="M17 3 L29 29 L17 23 L5 29 Z" fill="${c.color}" stroke="#16191c" stroke-width="2.5" stroke-linejoin="round" transform="rotate(${rot} 17 17)"/>`
+  :`<circle cx="17" cy="17" r="11" fill="${c.color}" stroke="#16191c" stroke-width="3"/>`;
+ const ring=isMe?`<circle cx="17" cy="17" r="16" fill="none" stroke="#fff" stroke-width="2" opacity=".8"/>`:'';
+ const crown=c.lead?`<circle cx="17" cy="17" r="4" fill="#16191c"/>`:'';
+ return L.divIcon({className:'',iconSize:[34,34],iconAnchor:[17,17],html:`<div style="position:relative;opacity:${stale?.45:1}"><svg class="car-ic" viewBox="0 0 34 34">${ring}${body}${crown}</svg><div class="car-tag">${esc(isMe?'You':c.name)}${c.lead?' · lead':''}</div></div>`});
+}
+function anchor(list){ // reference point: lead car, else group centre
+ const lead=list.find(c=>c.lead);if(lead)return{ref:lead,lead:true};
+ const n=list.length;return{ref:{lat:list.reduce((a,c)=>a+c.lat,0)/n,lng:list.reduce((a,c)=>a+c.lng,0)/n},lead:false};
+}
+function render(){
+ if(!map)return;
+ const all=Object.values(cars),pos=all.filter(c=>c.lat!=null&&(c===me||c.online||Date.now()-c.ts<10*60e3));
+ // markers
+ for(const id in markers)if(!pos.find(c=>c.id===id)){map.removeLayer(markers[id]);delete markers[id]}
+ pos.forEach(c=>{
+  const ic=carIcon(c,c.id===me.id);
+  if(!markers[c.id])markers[c.id]=L.marker([c.lat,c.lng],{icon:ic,zIndexOffset:c.id===me.id?1000:0}).addTo(map);
+  else{markers[c.id].setLatLng([c.lat,c.lng]);markers[c.id].setIcon(ic)}
+ });
+ // spread + gaps
+ let spread=null,far=[];
+ const live=pos.filter(c=>c===me||c.online);
+ if(live.length>1){
+  spread=0;for(let i=0;i<live.length;i++)for(let j=i+1;j<live.length;j++)spread=Math.max(spread,km(live[i],live[j]));
+  const {ref,lead}=anchor(live);
+  live.forEach(c=>{c._gap=c===ref?0:km(c,ref);c._ref=lead?'from lead':'from group'});
+  far=live.filter(c=>c._gap>limitKm*(anchor(live).lead?1:0.5));
+ }else live.forEach(c=>c._gap=null);
+ $('spread').textContent=spread==null?'–':fmtKm(spread);
+ $('spread').className='big'+(far.length?' bad':'');
+ $('count').textContent=all.filter(c=>c===me||c.online).length;
+ $('mySpeed').textContent=me.spd!=null?Math.round(me.spd)+' km/h':'–';
+ // alert
+ const al=$('alert');
+ if(far.length){
+  al.innerHTML=esc(far.map(c=>c===me?'You':c.name).join(', '))+(far.length>1?' are':' is')+' falling behind<small>'+far.map(c=>esc(c===me?'You':c.name)+': '+fmtKm(c._gap)+' '+c._ref).join(' · ')+'</small>';
+  al.classList.add('show');
+  far.forEach(c=>{if(!alerted[c.id]){alerted[c.id]=1;try{navigator.vibrate&&navigator.vibrate([400,150,400])}catch(e){}}});
+ }else al.classList.remove('show');
+ for(const id in alerted)if(!far.find(c=>c.id===id))delete alerted[id];
+ // list
+ const sorted=all.slice().sort((a,b)=>(!!b.lead-!!a.lead)||((a._gap??1e9)-(b._gap??1e9)));
+ $('cars').innerHTML=sorted.map(c=>{
+  const isMe=c.id===me.id,off=!isMe&&!c.online,noGps=c.lat==null;
+  const d=!isMe&&!noGps&&me.lat!=null?km(me,c):null;
+  const sub=off?'Offline · last seen '+ago(c.ts):noGps?'Waiting for GPS…':(c.spd!=null?Math.round(c.spd)+' km/h · ':'')+'updated '+ago(c.ts);
+  const isFar=far.includes(c);
+  return `<li data-id="${esc(c.id)}"><div class="av" style="background:${esc(c.color)}">${esc((c.name||'?')[0].toUpperCase())}</div>
+   <div class="who"><b>${esc(isMe?c.name+' (you)':c.name)}${c.lead?' · lead':''}</b><span>${esc(sub)}</span></div>
+   <div class="gap${isFar?' far':''}">${isMe?(c._gap!=null?fmtKm(c._gap):''):fmtKm(d)}<span>${isMe?(c._gap!=null?c._ref:''):'from you'}</span></div></li>`;
+ }).join('');
+ sizeSheet();
+}
+$('cars').addEventListener('click',e=>{const li=e.target.closest('li');const c=li&&cars[li.dataset.id];if(c&&c.lat!=null){setFollow(false);map.setView([c.lat,c.lng],16)}});
+
+/* ---------- controls ---------- */
+function setFollow(v){follow=v;$('followBtn').setAttribute('aria-pressed',v);if(v&&me.lat!=null)map.setView([me.lat,me.lng],Math.max(map.getZoom(),15))}
+$('followBtn').onclick=()=>setFollow(!follow);
+$('fitBtn').onclick=()=>{setFollow(false);const pts=Object.values(cars).filter(c=>c.lat!=null).map(c=>[c.lat,c.lng]);if(pts.length>1)map.fitBounds(pts,{padding:[60,60]});else if(pts.length)map.setView(pts[0],15)};
+$('limit').oninput=e=>{limitKm=+e.target.value;$('limitLbl').textContent=fmtKm(limitKm);store.set('cv_limit',limitKm);render()};
+const link=()=>location.origin+location.pathname+'?trip='+trip;
+$('shareBtn').onclick=()=>{$('dlgLink').textContent=link();$('waBtn').href='https://wa.me/?text='+encodeURIComponent('Join our convoy on the road 🚗 Trip code '+trip+'\n'+link());$('dlg').showModal()};
+$('dlgClose').onclick=()=>$('dlg').close();
+$('copyBtn').onclick=async()=>{try{await navigator.clipboard.writeText(link());$('copyBtn').textContent='Copied ✓'}catch(e){$('copyBtn').textContent='Copy failed'}setTimeout(()=>$('copyBtn').textContent='Copy link',2000)};
+$('leaveBtn').onclick=async()=>{try{if(watchId!=null)navigator.geolocation.clearWatch(watchId);if(ch){await ch.untrack();await sb.removeChannel(ch)}}catch(e){}location.href=location.pathname};
+}
+</script>
+</body>
+</html>
