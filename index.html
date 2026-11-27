@@ -78,6 +78,7 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
 .car-ic{width:34px;height:34px}
 .car-tag{position:absolute;left:50%;top:36px;transform:translateX(-50%);background:rgba(22,25,28,.9);color:#fff;font:600 12px Barlow;padding:1px 7px;border-radius:8px;white-space:nowrap}
 .leaflet-container{font-family:Barlow}
+.night{filter:invert(1) hue-rotate(180deg) brightness(.9) contrast(.85) saturate(.6)}
 .leaflet-control-attribution{font-size:10px}
 </style>
 </head>
@@ -114,6 +115,7 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
  <div id="alert" role="alert"></div>
  <div id="toast" role="status"></div>
  <div class="fab">
+  <button id="layerBtn" aria-label="Change map style">☀</button>
   <button id="fitBtn" aria-label="Show all cars" title="Show all cars">⤢</button>
   <button id="followBtn" aria-label="Follow my car" aria-pressed="false" title="Follow me">◎</button>
  </div>
@@ -194,7 +196,7 @@ function start(){
  $('codeLbl').textContent=trip;$('dlgCode').textContent=trip;
  history.replaceState(null,'','?trip='+trip);
  map=L.map('map',{zoomControl:false,attributionControl:true}).setView([27.88,78.08],12);
- L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19,attribution:'© OpenStreetMap © CARTO'}).addTo(map);
+ setBase(+(store.get('cv_base')||0));
  map.on('dragstart',()=>setFollow(false));
  $('limit').value=limitKm;$('limitLbl').textContent=fmtKm(limitKm);
  $('quick').innerHTML=QUICK.map(([i,t],n)=>`<button data-q="${n}">${i} ${esc(t)}</button>`).join('');
@@ -204,6 +206,15 @@ function start(){
  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){keepAwake();send(true)}});
  sizeSheet();
 }
+const ESRI='https://server.arcgisonline.com/ArcGIS/rest/services/',ATT='Tiles © Esri, HERE, Garmin, © OpenStreetMap contributors';
+const street=cls=>L.tileLayer(ESRI+'World_Street_Map/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,maxNativeZoom:19,attribution:ATT,className:cls||''});
+const BASES=[
+ {name:'Dark',icon:'☾',make:()=>[street('night')]},
+ {name:'Day',icon:'☀',make:()=>[street()]},
+ {name:'Satellite',icon:'🛰',make:()=>[L.tileLayer(ESRI+'World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,maxNativeZoom:18,attribution:'Imagery © Esri, Maxar, Earthstar Geographics'}),L.tileLayer(ESRI+'Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,maxNativeZoom:18})]}];
+let base=0,baseLayers=[];
+function setBase(i){base=i%BASES.length;baseLayers.forEach(l=>map.removeLayer(l));baseLayers=BASES[base].make();baseLayers.forEach(l=>l.addTo(map));
+ const b=$('layerBtn');b.textContent=BASES[(base+1)%BASES.length].icon;b.title=b.ariaLabel='Switch to '+BASES[(base+1)%BASES.length].name+' map';store.set('cv_base',base)}
 function sizeSheet(){const h=$('sheet').getBoundingClientRect().height;document.documentElement.style.setProperty('--sheet',h+'px')}
 addEventListener('resize',()=>{if(map)sizeSheet()});
 
@@ -350,6 +361,7 @@ $('cars').addEventListener('click',e=>{const li=e.target.closest('li');const c=l
 
 /* ---------- controls ---------- */
 function setFollow(v){follow=v;$('followBtn').setAttribute('aria-pressed',v);if(v&&me.lat!=null)map.setView([me.lat,me.lng],Math.max(map.getZoom(),15))}
+$('layerBtn').onclick=()=>setBase(base+1);
 $('followBtn').onclick=()=>setFollow(!follow);
 $('fitBtn').onclick=()=>{setFollow(false);const pts=Object.values(cars).filter(c=>c.lat!=null).map(c=>[c.lat,c.lng]);if(pts.length>1)map.fitBounds(pts,{padding:[60,60]});else if(pts.length)map.setView(pts[0],15)};
 $('limit').oninput=e=>{limitKm=+e.target.value;$('limitLbl').textContent=fmtKm(limitKm);store.set('cv_limit',limitKm);render()};
