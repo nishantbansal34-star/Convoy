@@ -1,0 +1,7 @@
+{
+  "appId": "in.orbe.convoy",
+  "appName": "Orbe Convoy",
+  "webDir": "www",
+  "android": { "useLegacyBridge": true },
+  "backgroundColor": "#16191c"
+}

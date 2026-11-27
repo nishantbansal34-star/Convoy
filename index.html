@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#16191c">
-<title>Convoy – keep everyone close</title>
+<title>Orbe Convoy</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
@@ -85,7 +85,7 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
 
 <section id="join">
  <div class="wrap">
-  <div class="sign"><h1>CONVOY</h1><p>Live map of every car in your group. Get warned when someone falls behind.</p></div>
+  <div class="sign"><h1>ORBE CONVOY</h1><p>Live map of every car in your group. Get warned when someone falls behind.</p></div>
   <div class="road" aria-hidden="true">
    <svg style="left:18%" width="64" height="40" viewBox="0 0 64 40"><rect x="4" y="8" width="54" height="24" rx="8" fill="#ffc629"/><rect x="38" y="12" width="12" height="16" rx="3" fill="#16191c" opacity=".55"/></svg>
    <svg style="left:48%" width="64" height="40" viewBox="0 0 64 40"><rect x="4" y="8" width="54" height="24" rx="8" fill="#3ddc84"/><rect x="38" y="12" width="12" height="16" rx="3" fill="#16191c" opacity=".55"/></svg>
@@ -101,7 +101,7 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
    <label class="chk"><input type="checkbox" id="lead"> I'm the lead car</label>
    <button class="pri" style="width:100%;margin-top:22px;min-height:54px;font-size:18px">Start sharing my location</button>
   </form>
-  <p class="note">Everyone opens this same page and enters the same trip code. Your location is only shared with people in your trip while this page is open, and is never stored. Keep the phone on charge for long drives.</p>
+  <p class="note">Everyone opens this same page and enters the same trip code. Your location is only shared with people in your trip while this page is open, and is never stored. In the Android app, sharing keeps running with the screen off. On the web version keep this page open. Keep the phone on charge for long drives.</p>
  </div>
 </section>
 
@@ -139,6 +139,7 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
  <button style="width:100%;margin-top:10px" id="dlgClose">Close</button>
 </dialog>
 
+<script src="capacitor.js" onerror="this.remove()"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
@@ -148,6 +149,10 @@ const SB_KEY='sb_publishable_-b7urbpGemxGRtC-__5cyw_LB1j3lRR';
 const COLORS=['#ffc629','#3ddc84','#5aa9ff','#ff7ab6','#ff8a3d','#b48cff','#ffffff','#ff4d4d'];
 const QUICK=[['🛑','Stop ahead'],['☕','Tea / food break'],['⛽','Fuel stop'],['🐢','Slow down, wait'],['✋','Wait for me'],['🚻','Washroom break'],['👍','All good']];
 const STALE=60e3;
+const CAP=window.capacitorExports||{};
+const NATIVE=!!(window.Capacitor&&window.Capacitor.isNativePlatform&&window.Capacitor.isNativePlatform());
+const BG=NATIVE&&CAP.registerPlugin?CAP.registerPlugin('BackgroundGeolocation'):null;
+const HTTP=NATIVE?CAP.CapacitorHttp:null;
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
@@ -202,17 +207,26 @@ function start(){
 function sizeSheet(){const h=$('sheet').getBoundingClientRect().height;document.documentElement.style.setProperty('--sheet',h+'px')}
 addEventListener('resize',()=>{if(map)sizeSheet()});
 
-function startGeo(){
- if(!navigator.geolocation){status('bad','This phone can’t share location');return}
- watchId=navigator.geolocation.watchPosition(p=>{
-  const c=p.coords;
+function onFix(c){
   me.lat=c.latitude;me.lng=c.longitude;me.acc=c.accuracy;
   me.spd=c.speed!=null&&c.speed>=0?c.speed*3.6:me.spd;
-  if(c.heading!=null&&!isNaN(c.heading))me.hdg=c.heading;
+  const h=c.heading??c.bearing;if(h!=null&&!isNaN(h))me.hdg=h;
   me.ts=Date.now();
   send();render();
   if(follow)map.panTo([me.lat,me.lng]);
   if(!fitted){fitted=true;map.setView([me.lat,me.lng],14)}
+}
+function startGeo(){
+ if(BG){
+  BG.addWatcher({backgroundTitle:'Orbe Convoy',backgroundMessage:'Sharing your location with trip '+trip,requestPermissions:true,stale:false,distanceFilter:5},(loc,err)=>{
+   if(err){if(err.code==='NOT_AUTHORIZED'){status('bad','Location not allowed – tap to open settings');$('status').onclick=()=>BG.openSettings()}return}
+   if(loc)onFix(loc);
+  }).then(id=>watchId=id);
+  return;
+ }
+ if(!navigator.geolocation){status('bad','This phone can’t share location');return}
+ watchId=navigator.geolocation.watchPosition(p=>{
+  onFix(p.coords);
  },err=>{
   status('bad',err.code===1?'Location blocked – allow it in browser settings':'Waiting for GPS…');
  },{enableHighAccuracy:true,maximumAge:3000,timeout:20000});
@@ -227,11 +241,12 @@ function connect(){
  ch=sb.channel('convoy-'+trip,{config:{presence:{key:me.id},broadcast:{self:false}}});
  ch.on('presence',{event:'sync'},()=>{
   const st=ch.presenceState(),live=new Set();
-  for(const k in st){const m=st[k][st[k].length-1];if(!m||k===me.id)continue;live.add(k);cars[k]=Object.assign(cars[k]||{},m,{online:true})}
-  for(const k in cars)if(k!==me.id&&!live.has(k))cars[k].online=false;
+  for(const k in st){const m=st[k][st[k].length-1];if(!m||k===me.id)continue;live.add(k);const o=cars[k]||{};cars[k]=Object.assign(o,(m.ts||0)>=(o.ts||0)?m:{},{pres:true})}
+  for(const k in cars)if(k!==me.id&&!live.has(k))cars[k].pres=false;
+  liveness();
   render();
  });
- ch.on('broadcast',{event:'loc'},({payload:p})=>{if(p&&p.id&&p.id!==me.id){cars[p.id]=Object.assign(cars[p.id]||{},p,{online:true});render()}});
+ ch.on('broadcast',{event:'loc'},({payload:p})=>{if(p&&p.id&&p.id!==me.id){cars[p.id]=Object.assign(cars[p.id]||{},p);liveness()}});
  ch.on('broadcast',{event:'msg'},({payload:p})=>{if(p)toast(p.text,p.name)});
  ch.subscribe(async s=>{
   if(s==='SUBSCRIBED'){online=true;status('ok','Live');await ch.track(pub());}
@@ -241,9 +256,18 @@ function connect(){
  addEventListener('offline',()=>{online=false;status('bad','No internet – reconnecting')});
 }
 const pub=()=>({id:me.id,name:me.name,color:me.color,lead:me.lead,lat:me.lat,lng:me.lng,spd:me.spd,hdg:me.hdg,ts:me.ts||Date.now()});
+function liveness(){for(const k in cars)if(k!==me.id){const c=cars[k];c.online=!!c.pres||Date.now()-(c.ts||0)<STALE}render()}
+setInterval(liveness,10000);
 function send(force){
- if(!online||!ch)return;const now=Date.now();
- if(!force&&now-lastSent<3000)return;lastSent=now;
+ const now=Date.now();
+ if(!force&&now-lastSent<3000)return;
+ if(HTTP&&me.lat!=null){ // native: goes through Android networking, keeps working with the screen off
+  lastSent=now;
+  HTTP.request({url:SB_URL+'/realtime/v1/api/broadcast',method:'POST',headers:{apikey:SB_KEY,'Content-Type':'application/json'},data:{messages:[{topic:'convoy-'+trip,event:'loc',payload:pub()}]}}).catch(()=>{});
+  if(online&&ch&&(force||now-(send.t||0)>20000)){send.t=now;ch.track(pub())}
+  return;
+ }
+ if(!online||!ch)return;lastSent=now;
  ch.send({type:'broadcast',event:'loc',payload:pub()});
  if(force||now-(send.t||0)>20000){send.t=now;ch.track(pub())}
 }
@@ -329,11 +353,12 @@ function setFollow(v){follow=v;$('followBtn').setAttribute('aria-pressed',v);if(
 $('followBtn').onclick=()=>setFollow(!follow);
 $('fitBtn').onclick=()=>{setFollow(false);const pts=Object.values(cars).filter(c=>c.lat!=null).map(c=>[c.lat,c.lng]);if(pts.length>1)map.fitBounds(pts,{padding:[60,60]});else if(pts.length)map.setView(pts[0],15)};
 $('limit').oninput=e=>{limitKm=+e.target.value;$('limitLbl').textContent=fmtKm(limitKm);store.set('cv_limit',limitKm);render()};
-const link=()=>location.origin+location.pathname+'?trip='+trip;
-$('shareBtn').onclick=()=>{$('dlgLink').textContent=link();$('waBtn').href='https://wa.me/?text='+encodeURIComponent('Join our convoy on the road 🚗 Trip code '+trip+'\n'+link());$('dlg').showModal()};
+const WEB='https://nishantbansal34-star.github.io/Convoy/',APK='https://github.com/nishantbansal34-star/Convoy/releases/latest/download/OrbeConvoy.apk';
+const link=()=>(NATIVE?WEB:location.origin+location.pathname)+'?trip='+trip;
+$('shareBtn').onclick=()=>{$('dlgLink').textContent=link();$('waBtn').href='https://wa.me/?text='+encodeURIComponent('Join our Orbe Convoy 🚗 Trip code: '+trip+'\nOpen: '+link()+'\nAndroid app (works with screen off): '+APK);$('dlg').showModal()};
 $('dlgClose').onclick=()=>$('dlg').close();
 $('copyBtn').onclick=async()=>{try{await navigator.clipboard.writeText(link());$('copyBtn').textContent='Copied ✓'}catch(e){$('copyBtn').textContent='Copy failed'}setTimeout(()=>$('copyBtn').textContent='Copy link',2000)};
-$('leaveBtn').onclick=async()=>{try{if(watchId!=null)navigator.geolocation.clearWatch(watchId);if(ch){await ch.untrack();await sb.removeChannel(ch)}}catch(e){}location.href=location.pathname};
+$('leaveBtn').onclick=async()=>{try{if(watchId!=null){if(BG)await BG.removeWatcher({id:watchId});else navigator.geolocation.clearWatch(watchId)}if(ch){await ch.untrack();await sb.removeChannel(ch)}}catch(e){}location.href=location.pathname};
 }
 </script>
 </body>
